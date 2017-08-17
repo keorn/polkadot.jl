@@ -1,18 +1,21 @@
 using SimJulia, Distributions
 
-abstract type Block end
+abstract type Message end
 
-struct RelayBlock <: Block
+struct Block{T} <: Message
 	author::UInt
 	timestamp::UInt
-	body::UInt
+	body::T
 	height::UInt
-	function RelayBlock(sim::Simulation, engine_signer::UInt, height::UInt)
-		new(engine_signer, round(UInt, now(sim)), rand(UInt), height + 1)
+	function Block{T}(sim::Simulation, engine_signer::UInt, height::UInt, body::T) where T
+		new(engine_signer, round(UInt, now(sim)), body, height + 1)
 	end
 end
 
-const Message = Union{RelayBlock}
+const RelayBlock = Block{Vector{UInt}}
+const ParaBlock = Block{UInt}
+
+#const Message = Union{RelayBlock, ParaBlock}
 
 struct ValidatorSet
 	validators::Vector{UInt}
@@ -53,9 +56,10 @@ end
 mutable struct Blockchain
 	height::UInt
 	blocks::Vector{Block}
+	Blockchain() = new(0, [])
 end
 
-function broadcast{T<:Message}(endpoint::NetworkEndpoint, value::T)
+function broadcast(endpoint::NetworkEndpoint, value::Message)
 	[Put(pipe, value) for pipe in values(endpoint.network.pipes)]
 end
 receive(endpoint::NetworkEndpoint) = Get(endpoint.network.pipes[endpoint.enode])
@@ -63,7 +67,11 @@ receive(endpoint::NetworkEndpoint) = Get(endpoint.network.pipes[endpoint.enode])
 function validating!(sim::Simulation, endpoint::NetworkEndpoint, spec::EngineSpec, chain::Blockchain)
 	while true
 		new_block = yield(receive(endpoint))
-		chain.height = new_block.height
+		if typeof(new_block) == RelayBlock
+			chain.height = new_block.height
+		else
+			println("Ignoring para")
+		end
 		#println(now(sim), ": ", endpoint.enode, " received $new_block")
 	end
 end
@@ -73,31 +81,29 @@ function proposing(sim::Simulation, endpoint::NetworkEndpoint, spec::EngineSpec,
 		yield(Timeout(sim, Float64(spec.step_duration)))
 		println(now(sim), ": $engine_signer at block ", chain.height)
 		if get_validator(spec, now(sim)) == engine_signer
-			block = RelayBlock(sim, engine_signer, chain.height)
+			block = RelayBlock(sim, engine_signer, chain.height, rand(UInt, 2))
 			broadcast(endpoint, block)
 			println(now(sim), ": $engine_signer broadcasted $block")
 		end
 	end
 end
 
-struct Validator
-	function Validator(sim::Simulation, endpoint::NetworkEndpoint, spec::EngineSpec, engine_signer::UInt)
-		blockchain = Blockchain(0, [])
-		Process(validating!, sim, endpoint, spec, blockchain)
-		Process(proposing, sim, endpoint, spec, engine_signer, blockchain)
+function collating(sim::Simulation, endpoint::NetworkEndpoint, spec::EngineSpec, engine_signer::UInt, chain::Blockchain)
+	while true
+		yield(Timeout(sim, Float64(spec.step_duration)))
+		block = ParaBlock(sim, engine_signer, chain.height, rand(UInt))
+		broadcast(endpoint, block)
 	end
 end
 
-#=
-mutable struct Collator
-	endpoint::NetworkEndpoint
-	engine_signer::UInt
-	blockchain::Blockchain
-	function Validator(sim::Simulation, endpoint::NetworkEndpoint, spec::EngineSpec, engine_signer::UInt)
-		blockchain = Blockchain(0)
-		validator = new(endpoint, engine_signer, blockchain)
-		Process(validating!, sim, endpoint, spec, blockchain)
-		Process(proposing, sim, endpoint, spec, engine_signer, blockchain)
-	end
+function validator(sim::Simulation, endpoint::NetworkEndpoint, spec::EngineSpec, engine_signer::UInt)
+	blockchain = Blockchain()
+	Process(validating!, sim, endpoint, spec, blockchain)
+	Process(proposing, sim, endpoint, spec, engine_signer, blockchain)
 end
-=#
+
+function collator(sim::Simulation, endpoint::NetworkEndpoint, spec::EngineSpec, engine_signer::UInt)
+	blockchain = Blockchain()
+	Process(validating!, sim, endpoint, spec, blockchain)
+	Process(collating, sim, endpoint, spec, engine_signer, blockchain)
+end
