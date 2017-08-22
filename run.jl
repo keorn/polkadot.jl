@@ -4,7 +4,7 @@ sim = Simulation()
 set = ValidatorSet(UInt(3))
 collators = rand(UInt, 2)
 network = Network(sim, vcat(set.validators, collators))
-spec = EngineSpec(5, set)
+spec = EngineSpec(5, 1, set)
 for i in 1:3
     validator(sim, NetworkEndpoint(network, set.validators[i]), spec, set.validators[i])
 end
