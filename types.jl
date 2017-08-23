@@ -149,7 +149,7 @@ mutable struct Table
 	availability::Dict{Header, UInt}
 	seen::Set{Statement}
 	invalid::Set{Header}
-	Table(chains::UInt, threshold::UInt) = new(chains, threshold, Dict(), Dict())
+	Table(chains::UInt, threshold::UInt) = new(chains, threshold, Dict(), Dict(), Set(), Set())
 end
 
 function clean!(table::Table)
@@ -166,13 +166,13 @@ function insert_new!(table::Table, valid::Valid)
 		current = get!(table.validity, valid.block, UInt(1))
 		table.validity[valid.block] = current + 1
 	else
-		insert!(table.invalid, valid.block)
+		push!(table.invalid, valid.block)
 	end
 end
 function insert!(table::Table, statement::Statement)
-	if !in(statement, table.seen) && !in(statement.block, invalid)
+	if !in(statement, table.seen) && !in(statement.block, table.invalid)
 		insert_new!(table, statement)
-		insert!(table.seen, statement)
+		push!(table.seen, statement)
 	end
 end
 function proposal(table::Table, height::UInt)
