@@ -6,6 +6,8 @@ const Address = UInt
 struct Config
 	engine_signer::Address
 	chain_id::UInt
+	malicious::Bool
+	Config(engine_signer, chain, malicious=false) = new(engine_signer, chain, malicious)
 end
 
 "Anything that can be passed through the network."
@@ -21,7 +23,7 @@ struct Header
 	chain::UInt
 	is_valid::Bool
 	function Header(config::Config, time::Float64, height::UInt)
-		new(config.engine_signer, round(UInt, time), height + 1, rand(UInt), config.chain_id, true)
+		new(config.engine_signer, round(UInt, time), height + 1, rand(UInt), config.chain_id, !config.malicious)
 	end
 end
 
@@ -88,13 +90,19 @@ end
 
 mutable struct Blockchain
 	height::UInt
+	# TODO Keep track of forks.
 	blocks::Vector{Block}
 	Blockchain() = new(0, [])
 end
 
 function insert!(chain::Blockchain, block::Block)
-	chain.height = block.header.height
-	push!(chain.blocks, block)
+	if block.header.height == chain.height + 1
+		chain.height = block.header.height
+		push!(chain.blocks, block)
+		true
+	else
+		false
+	end
 end
 
 mutable struct Statements
@@ -133,6 +141,7 @@ function insert_new!(table::Table, available::Available)
 	current = get!(table.availability, available.block, UInt(1))
 	table.availability[available.block] = current + 1
 end
+"Add vailidity claim or instantly mark as invalid."
 function insert_new!(table::Table, valid::Valid)
 	if valid.is_valid
 		insert!(table, Available(valid.from, valid.block))
@@ -142,12 +151,20 @@ function insert_new!(table::Table, valid::Valid)
 		push!(table.invalid, valid.block)
 	end
 end
+"Handle only statements that have not been seen and do not pertain to a known invalid header."
 function insert!(table::Table, statement::Statement)
 	if !in(statement, table.seen) && !in(statement.block, table.invalid)
 		insert_new!(table, statement)
 		push!(table.seen, statement)
 	end
 end
+
+"""
+Relay block proposal formed of paraheaders.
+Each header has at least 2/3 validity from a group
+and has the most availability statements.
+Parachain for which there is no valid block present gets a Null header.
+"""
 function proposal(table::Table, height::UInt)
 	criterium = h -> h.height == height + 1 && !in(h, table.invalid) && get(table.validity, h, 0) >= table.threshold
 	good = Iterators.filter(criterium, keys(table.availability))
@@ -160,3 +177,4 @@ function proposal(table::Table, height::UInt)
 	end
 	proposal
 end
+isvalid(table::Table, header::Header) = !in(header, table.invalid) && get(table.validity, header, 0) >= table.threshold

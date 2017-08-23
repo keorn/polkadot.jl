@@ -1,14 +1,17 @@
 #!/usr/bin/env julia
 include("processes.jl")
 
-sim = Simulation()
 VALIDATORS = UInt(2)
 PARACHAINS = UInt(1)
 COLLATORS = PARACHAINS
+VIEW_DURATION = 5
+NETWORK_DELAY = 0.5
+
+sim = Simulation()
 set = ValidatorSet(VALIDATORS, PARACHAINS)
 collators = rand(UInt, COLLATORS)
-network = Network(sim, vcat(set.validators, collators), 0.5)
-spec = EngineSpec(5, PARACHAINS, set)
+network = Network(sim, vcat(set.validators, collators), NETWORK_DELAY)
+spec = EngineSpec(VIEW_DURATION, PARACHAINS, set)
 for i in 1:VALIDATORS
 	validator(sim, NetworkEndpoint(network, set.validators[i]), spec, set.validators[i])
 end

@@ -39,9 +39,11 @@ receive(endpoint::NetworkEndpoint) = Get(endpoint.network.pipes[endpoint.enode])
 
 "Validator handling of a relay chain block."
 function handle!(endpoint::NetworkEndpoint, spec::EngineSpec, config::Config, chain::Blockchain, table::Table, relay::RelayBlock)
-	insert!(chain, relay)
-	@info "$(config.engine_signer) at block $(chain.height)"
-	clean!(table)
+	if all(b -> isnull(b) || isvalid(table, get(b)), relay.parablocks)
+		insert!(chain, relay)
+		@info "$(config.engine_signer) at block $(chain.height)"
+		clean!(table)
+	end
 end
 "Validator handling of a parachain block."
 function handle!(endpoint::NetworkEndpoint, spec::EngineSpec, config::Config, chain::Blockchain, table::Table, para::ParaBlock)
@@ -73,6 +75,8 @@ function proposing(sim::Simulation, endpoint::NetworkEndpoint, spec::EngineSpec,
 end
 
 function collating!(sim::Simulation, endpoint::NetworkEndpoint, spec::EngineSpec, config::Config, chain::Blockchain)
+	block = ParaBlock(config, now(sim), chain.height)
+	Process(send, sim, endpoint, paragroup(spec, now(sim), config.chain_id), block)
 	while true
 		new_block = yield(receive(endpoint))
 		if isa(new_block, RelayBlock)
