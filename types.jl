@@ -1,4 +1,4 @@
-using SimJulia, Distributions, MicroLogging
+using MicroLogging
 
 const Address = UInt
 
@@ -20,8 +20,8 @@ struct Header
 	hash::UInt
 	chain::UInt
 	is_valid::Bool
-	function Header(sim::Simulation, config::Config, height::UInt)
-		new(config.engine_signer, round(UInt, now(sim)), height + 1, rand(UInt), config.chain_id, true)
+	function Header(config::Config, time::Float64, height::UInt)
+		new(config.engine_signer, round(UInt, time), height + 1, rand(UInt), config.chain_id, true)
 	end
 end
 
@@ -29,15 +29,15 @@ end
 struct RelayBlock <: Block
 	header::Header
 	parablocks::Vector{Nullable{Header}}
-	function RelayBlock(sim::Simulation, engine_signer::Address, height::UInt, parablocks::Vector{Nullable{Header}})
-		new(Header(sim, Config(engine_signer, UInt(0)), height), parablocks)
+	function RelayBlock(engine_signer::Address, time::Float64, height::UInt, parablocks::Vector{Nullable{Header}})
+		new(Header(Config(engine_signer, UInt(0)), time, height), parablocks)
 	end
 end
 "Parachain block."
 struct ParaBlock <: Block
 	header::Header
-	function ParaBlock(sim::Simulation, config::Config, height::UInt)
-		new(Header(sim, config, height))
+	function ParaBlock(config::Config, time::Float64, height::UInt)
+		new(Header(config, time, height))
 	end
 end
 
@@ -85,33 +85,6 @@ end
 function paragroup(spec::EngineSpec, time::Number, para::UInt)
 	group(spec.validator_set, view(time, spec.view_duration), para)
 end
-
-"All network connections."
-mutable struct Network
-	pipes::Dict{Address, Store}
-	function Network(sim::Simulation, nodes::Vector{Address}, capacity::UInt=typemax(UInt))
-		@info "Starting the network with nodes $nodes"
-		new(Dict(node => Store{Message}(sim, capacity) for node in nodes))
-	end
-end
-
-function new_connection(network::Network, node::Address)
-	pipe = Store(network.sim, network.capacity)
-	network.pipes[node] = pipe
-	pipe
-end
-
-mutable struct NetworkEndpoint
-	network::Network
-	enode::Address
-end
-
-function broadcast(endpoint::NetworkEndpoint, value::Message)
-	[Put(pipe, value) for pipe in values(endpoint.network.pipes)]
-end
-send(endpoint::NetworkEndpoint, destination::Address, value::Message) = Put(endpoint.network.pipes[destination], value)
-send(endpoint::NetworkEndpoint, destinations::Vector{Address}, value::Message) = [Put(endpoint.network.pipes[destination], value) for destination in destinations]
-receive(endpoint::NetworkEndpoint) = Get(endpoint.network.pipes[endpoint.enode])
 
 mutable struct Blockchain
 	height::UInt
@@ -176,13 +149,13 @@ function insert!(table::Table, statement::Statement)
 	end
 end
 function proposal(table::Table, height::UInt)
-	criterium = h -> h.height == height && !in(h, table.invalid) && get(table.validity, h, 0) >= table.threshold
+	criterium = h -> h.height == height + 1 && !in(h, table.invalid) && get(table.validity, h, 0) >= table.threshold
 	good = Iterators.filter(criterium, keys(table.availability))
 	proposal = fill(Nullable{Header}(), table.chains)
 	for h in good
-		current = proposal[h.chain_id]
+		current = proposal[h.chain]
 		if isnull(current) || table.availability[get(current)] < table.availability[h]
-			proposal[h.chain_id] = Nullable(h)
+			proposal[h.chain] = Nullable(h)
 		end
 	end
 	proposal
