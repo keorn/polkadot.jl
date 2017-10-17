@@ -13,12 +13,12 @@ collators = rand(UInt, COLLATORS)
 network = Network(sim, vcat(set.validators, collators), NETWORK_DELAY)
 spec = EngineSpec(VIEW_DURATION, PARACHAINS, set)
 for i in 1:VALIDATORS
-	validator(sim, NetworkEndpoint(network, set.validators[i]), spec, set.validators[i])
+  start_validator(sim, NetworkEndpoint(network, set.validators[i]), Config(spec, set.validators[i]))
 end
 for i in 1:COLLATORS-1
-	collator(sim, NetworkEndpoint(network, collators[i]), spec, Config(collators[i], i%PARACHAINS + 1))
+  start_collator(sim, NetworkEndpoint(network, collators[i]), Config(spec, collators[i], i%PARACHAINS + 1))
 end
-collator(sim, NetworkEndpoint(network, collators[COLLATORS]), spec, Config(collators[COLLATORS], COLLATORS%PARACHAINS + 1, true))
+start_collator(sim, NetworkEndpoint(network, collators[COLLATORS]), Config(spec, collators[COLLATORS], COLLATORS%PARACHAINS + 1, true))
 
 SIM_TIME = 50.0
 

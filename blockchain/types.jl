@@ -3,26 +3,59 @@ using MicroLogging
 include("../types.jl");
 
 const Address = UInt
+const Timestamp = UInt
+Timestamp(time::Float64) = round(UInt, time)
+
+struct ValidatorSet
+  validators::Vector{Address}
+  validator_n::UInt
+  group_size::UInt
+  ValidatorSet(validator_n::UInt, group_n::UInt) = new(rand(Address, validator_n), validator_n, div(validator_n, group_n))
+end
+
+validator(set::ValidatorSet, nonce::UInt) = set.validators[nonce % set.validator_n + 1]
+function group(set::ValidatorSet, nonce::UInt, nth::UInt)
+  [validator(set, i) for i in nonce + (nth - 1) * set.group_size:nonce + nth * set.group_size - 1]
+end
+
+"Relay chain view."
+view(time::Number, view_duration::UInt) = div(Timestamp(time), view_duration)
+view(time::UInt, view_duration::UInt) = div(time, view_duration)
+
+"Specification of the consensus engine."
+struct EngineSpec
+  view_duration::UInt
+  para_n::UInt
+  validator_set::ValidatorSet
+end
+
+function primary(spec::EngineSpec, time::Float64)::Address
+  validator(spec.validator_set, view(time, spec.view_duration))
+end
+function paragroup(spec::EngineSpec, time::Number, para::UInt)
+  group(spec.validator_set, view(time, spec.view_duration), para)
+end
 
 "Node specific config."
 struct Config
+  spec::EngineSpec
   engine_signer::Address
   chain_id::UInt
   malicious::Bool
-  Config(engine_signer, chain, malicious=false) = new(engine_signer, chain, malicious)
+  Config(spec, engine_signer, chain=0, malicious=false) = new(spec, engine_signer, chain, malicious)
 end
 
 abstract type Block <: Message end
 
 struct Header
   author::Address
-  timestamp::UInt
+  timestamp::Timestamp
   height::UInt
   hash::UInt
   chain::UInt
   is_valid::Bool
-  function Header(config::Config, time::Float64, height::UInt)
-    new(config.engine_signer, round(UInt, time), height + 1, rand(UInt), config.chain_id, !config.malicious)
+  function Header(config::Config, time::Timestamp, height::UInt)
+    new(config.engine_signer, time, height + 1, rand(UInt), config.chain_id, !config.malicious)
   end
 end
 
@@ -30,15 +63,15 @@ end
 struct RelayBlock <: Block
   header::Header
   parablocks::Vector{Nullable{Header}}
-  function RelayBlock(engine_signer::Address, time::Float64, height::UInt, parablocks::Vector{Nullable{Header}})
-    new(Header(Config(engine_signer, UInt(0)), time, height), parablocks)
+  function RelayBlock(config::Config, time::Float64, height::UInt, parablocks::Vector{Nullable{Header}})
+    new(Header(config, Timestamp(time), height), parablocks)
   end
 end
 "Parachain block."
 struct ParaBlock <: Block
   header::Header
   function ParaBlock(config::Config, time::Float64, height::UInt)
-    new(Header(config, time, height))
+    new(Header(config, Timestamp(time), height))
   end
 end
 
@@ -56,35 +89,6 @@ struct Valid <: Statement
   from::Address
   block::Header
   is_valid::Bool
-end
-
-"Relay chain view."
-view(time::Number, view_duration::UInt) = div(round(UInt, abs(time)), view_duration)
-
-struct ValidatorSet
-  validators::Vector{Address}
-  validator_n::UInt
-  group_size::UInt
-  ValidatorSet(validator_n::UInt, group_n::UInt) = new(rand(Address, validator_n), validator_n, div(validator_n, group_n))
-end
-
-validator(set::ValidatorSet, nonce::UInt) = set.validators[nonce % set.validator_n + 1]
-function group(set::ValidatorSet, nonce::UInt, nth::UInt)
-  [validator(set, i) for i in nonce + (nth - 1) * set.group_size:nonce + nth * set.group_size - 1]
-end
-
-"Specification of the consensus engine."
-struct EngineSpec
-  view_duration::UInt
-  para_n::UInt
-  validator_set::ValidatorSet
-end
-
-function primary(spec::EngineSpec, time::Float64)::Address
-  validator(spec.validator_set, view(time, spec.view_duration))
-end
-function paragroup(spec::EngineSpec, time::Number, para::UInt)
-  group(spec.validator_set, view(time, spec.view_duration), para)
 end
 
 mutable struct Blockchain

@@ -6,7 +6,7 @@ const Topic = UInt
 
 "Node specific config."
 struct Config
-  enode::Enode
+  enode::NodeId
   broadcast::Categorical
   listen::Set{Topic}
 end
