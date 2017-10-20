@@ -1,11 +1,12 @@
 include("../network.jl")
-include("types.jl")
+include("blockchain.jl")
+include("table.jl")
 
 using Distributions
 
 "Validator handling of a relay chain block."
 function handle!(endpoint::NetworkEndpoint, config::Config, chain::Blockchain, table::Table, relay::RelayBlock)
-  if all(b -> isnull(b) || isvalid(table, get(b)), relay.parablocks)
+  if isvalid(table, relay)
     insert!(chain, relay)
     @info "$(config.engine_signer) at block $(chain.height)"
     clean!(table)
@@ -13,11 +14,7 @@ function handle!(endpoint::NetworkEndpoint, config::Config, chain::Blockchain, t
 end
 "Validator handling of a parachain block."
 function handle!(endpoint::NetworkEndpoint, config::Config, chain::Blockchain, table::Table, para::ParaBlock)
-  if config.engine_signer in paragroup(config.spec, para.header.timestamp, para.header.chain)
-    Process(broadcast, sim, endpoint, Valid(config.engine_signer, para.header, para.header.is_valid))
-  else
-    Process(broadcast, sim, endpoint, Available(config.engine_signer, para.header))
-  end
+  Process(broadcast, sim, endpoint, reaction(config, para))
 end
 "Validator handling of a statement."
 handle!(endpoint::NetworkEndpoint, config::Config, chain::Blockchain, table::Table, statement::Statement) = insert!(table, statement)
@@ -32,10 +29,10 @@ end
 function proposing(sim::Simulation, endpoint::NetworkEndpoint, config::Config, chain::Blockchain, table::Table)
   while true
     yield(Timeout(sim, Float64(config.spec.view_duration)))
-    if primary(config.spec, now(sim)) == config.engine_signer
-      block = RelayBlock(config, now(sim), chain.height, proposal(table, chain.height))
-      Process(broadcast, sim, endpoint, block)
-      @info "$(now(sim)): $(config.engine_signer) broadcasted $(block.parablocks)"
+    block = proposal(config, table, chain.height, Timestamp(now(sim)))
+    if !isnull(block)
+      Process(broadcast, sim, endpoint, get(block))
+      @info "$(now(sim)): $(config.engine_signer) broadcasted $(get(block).parablocks)"
     end
   end
 end
