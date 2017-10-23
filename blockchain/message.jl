@@ -6,11 +6,12 @@ struct Header
   author::Address
   timestamp::Timestamp
   height::UInt
-  hash::UInt
+  hash::Hash
+  parent_hash::Hash
   chain::UInt
   is_valid::Bool
-  function Header(config::Config, time::Timestamp, height::UInt)
-    new(config.engine_signer, time, height + 1, rand(UInt), config.chain_id, !config.malicious)
+  function Header(config::Config, parent_hash::Hash, time::Timestamp, height::UInt)
+    new(config.engine_signer, time, height + 1, rand(UInt), parent_hash, config.chain_id, !config.malicious)
   end
 end
 
@@ -18,15 +19,15 @@ end
 struct RelayBlock <: Block
   header::Header
   parablocks::Vector{Nullable{Header}}
-  function RelayBlock(config::Config, time::Timestamp, height::UInt, parablocks::Vector{Nullable{Header}})
-    new(Header(config, time, height), parablocks)
+  function RelayBlock(config::Config, parent_hash::Hash, time::Timestamp, height::UInt, parablocks::Vector{Nullable{Header}})
+    new(Header(config, parent_hash, time, height), parablocks)
   end
 end
 "Parachain block."
 struct ParaBlock <: Block
   header::Header
-  function ParaBlock(config::Config, time::Float64, height::UInt)
-    new(Header(config, Timestamp(time), height))
+  function ParaBlock(config::Config, parent_hash::Hash, time::Float64, height::UInt)
+    new(Header(config, parent_hash, Timestamp(time), height))
   end
 end
 

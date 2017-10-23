@@ -2,6 +2,7 @@ using MicroLogging
 
 include("../types.jl");
 
+const Hash = UInt
 const Address = UInt
 const Timestamp = UInt
 Timestamp(time::Float64) = round(UInt, time)

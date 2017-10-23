@@ -72,9 +72,9 @@ function proposal(table::Table, height::UInt)
   end
   proposal
 end
-function proposal(config::Config, table::Table, height::UInt, time::Timestamp)
+function proposal(config::Config, parent_hash::Hash, table::Table, height::UInt, time::Timestamp)
   if primary(config.spec, time) == config.engine_signer
-    Nullable(RelayBlock(config, time, height, proposal(table, height)))
+    Nullable(RelayBlock(config, parent_hash, time, height, proposal(table, height)))
   else
     Nullable()
   end

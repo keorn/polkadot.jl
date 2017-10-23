@@ -8,7 +8,7 @@ using Distributions
 function handle!(endpoint::NetworkEndpoint, config::Config, chain::Blockchain, table::Table, relay::RelayBlock)
   if isvalid(table, relay)
     insert!(chain, relay)
-    @info "$(config.engine_signer) at block $(chain.height)"
+    @info "$(config.engine_signer) at block $(height(chain))"
     clean!(table)
   end
 end
@@ -29,7 +29,7 @@ end
 function proposing(sim::Simulation, endpoint::NetworkEndpoint, config::Config, chain::Blockchain, table::Table)
   while true
     yield(Timeout(sim, Float64(config.spec.view_duration)))
-    block = proposal(config, table, chain.height, Timestamp(now(sim)))
+    block = proposal(config, chain.head.hash, table, height(chain), Timestamp(now(sim)))
     if !isnull(block)
       Process(broadcast, sim, endpoint, get(block))
       @info "$(now(sim)): $(config.engine_signer) broadcasted $(get(block).parablocks)"
@@ -38,13 +38,13 @@ function proposing(sim::Simulation, endpoint::NetworkEndpoint, config::Config, c
 end
 
 function collating!(sim::Simulation, endpoint::NetworkEndpoint, config::Config, chain::Blockchain)
-  block = ParaBlock(config, now(sim), chain.height)
+  block = ParaBlock(config, chain.head.hash, now(sim), height(chain))
   Process(send, sim, endpoint, paragroup(config.spec, now(sim), config.chain_id), block)
   while true
     new_block = yield(receive(endpoint))
     if isa(new_block, RelayBlock)
       insert!(chain, new_block)
-      block = ParaBlock(config, now(sim), chain.height)
+      block = ParaBlock(config, chain.head.hash, now(sim), height(chain))
       Process(send, sim, endpoint, paragroup(config.spec, now(sim), config.chain_id), block)
     end
   end
@@ -52,7 +52,7 @@ end
 
 "Validator process."
 function start_validator(sim::Simulation, endpoint::NetworkEndpoint, config::Config)
-  blockchain = Blockchain()
+  blockchain = Blockchain(config)
   table = Table(config.spec.para_n, div(config.spec.validator_set.group_size * 2, 3))
   Process(validating!, sim, endpoint, config, blockchain, table)
   Process(proposing, sim, endpoint, config, blockchain, table)
@@ -60,6 +60,6 @@ end
 
 "Collator process."
 function start_collator(sim::Simulation, endpoint::NetworkEndpoint, config::Config)
-  blockchain = Blockchain()
+  blockchain = Blockchain(config)
   Process(collating!, sim, endpoint, config, blockchain)
 end
