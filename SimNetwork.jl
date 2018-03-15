@@ -1,8 +1,8 @@
-using SimJulia
+module SimNetwork
 
-include("types.jl");
+export NodeId, Message, Network, NetworkEndpoint, new_connection, broadcast, send, receive
 
-const NodeId = UInt
+using MicroLogging, SimJulia, BaseTypes
 
 "All network connections."
 mutable struct Network
@@ -39,3 +39,5 @@ function send(sim::Simulation, endpoint::NetworkEndpoint, destinations::Vector{N
   [Put(endpoint.network.pipes[destination], value) for destination in destinations]
 end
 receive(endpoint::NetworkEndpoint) = Get(endpoint.network.pipes[endpoint.enode])
+
+end

@@ -1,4 +1,6 @@
-include("message.jl")
+import Base.insert!
+
+using BaseTypes, Messages, NodeConfig.Config
 
 mutable struct Statements
   invalid::Bool
@@ -72,9 +74,10 @@ function proposal(table::Table, height::UInt)
   end
   proposal
 end
-function proposal(config::Config, parent_hash::Hash, table::Table, height::UInt, time::Timestamp)
+function proposal(config::Config, parent::Header, table::Table, height::UInt, time::Timestamp)
   if primary(config.spec, time) == config.engine_signer
-    Nullable(RelayBlock(config, parent_hash, time, height, proposal(table, height)))
+    v_c_relay_block(config, height)
+    Nullable(RelayBlock(config, parent, time, height, proposal(table, height)))
   else
     Nullable()
   end
